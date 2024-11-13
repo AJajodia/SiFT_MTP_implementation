@@ -188,6 +188,8 @@ class SiFTShell(cmd.Cmd):
 
 # --------------------------------------
 if __name__ == '__main__':
+    with open('publickey.pem') as f:
+        publickey = f.read()
 
     try:
         sckt = socket.socket(socket.AF_INET,socket.SOCK_STREAM)

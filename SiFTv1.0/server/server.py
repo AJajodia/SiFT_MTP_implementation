@@ -48,6 +48,9 @@ class Server:
 
 
     def handle_client(self, client_socket, addr):
+        with open('keypair.pem') as f:
+            keypair = f.read()
+        
         print('New client on ' + addr[0] + ':' + str(addr[1]))
 
         mtp = SiFT_MTP(client_socket)
