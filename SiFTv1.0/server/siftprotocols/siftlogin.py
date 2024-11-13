@@ -2,7 +2,9 @@
 
 import time
 from Crypto.Hash import SHA256
+from Crypto.Cipher import PKCS1_OAEP, AES
 from Crypto.Protocol.KDF import PBKDF2
+from Crypto.Random import get_random_bytes
 from siftprotocols.siftmtp import SiFT_MTP, SiFT_MTP_Error
 
 
@@ -132,8 +134,7 @@ class SiFT_LOGIN:
 
 
     # handles login process (to be used by the client)
-    def handle_login_client(self, username, password):
-
+    def handle_login_client(self, username, password, pubkey):
         # building a login request
         login_req_struct = {}
         login_req_struct['username'] = username

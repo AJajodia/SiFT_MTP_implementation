@@ -189,7 +189,7 @@ class SiFTShell(cmd.Cmd):
 # --------------------------------------
 if __name__ == '__main__':
     with open('publickey.pem') as f:
-        publickey = f.read()
+        pubkey = f.read()
 
     try:
         sckt = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     print()
 
     try:
-        loginp.handle_login_client(username, password)
+        loginp.handle_login_client(username, password, pubkey)
     except SiFT_LOGIN_Error as e:
         print('SiFT_LOGIN_Error: ' + e.err_msg)
         sys.exit(1)
