@@ -2,11 +2,10 @@
 
 import time
 from Crypto.Hash import SHA256
+from Crypto.Cipher import PKCS1_OAEP, AES
 from Crypto.Protocol.KDF import PBKDF2
-from siftprotocols.siftmtp import SiFT_MTP, SiFT_MTP_Erro
-from Crypto.Cipher import AES, PKCS1_OAEP
-from Crypto.Signature import PKCS1_PSS
-from Crypto.PublicKey import RSA
+from Crypto.Random import get_random_bytes
+from siftprotocols.siftmtp import SiFT_MTP, SiFT_MTP_Error
 
 
 class SiFT_LOGIN_Error(Exception):
@@ -136,15 +135,11 @@ class SiFT_LOGIN:
 
     # handles login process (to be used by the client)
     def handle_login_client(self, username, password, pubkey):
-
         # building a login request
         login_req_struct = {}
         login_req_struct['username'] = username
         login_req_struct['password'] = password
         msg_payload = self.build_login_req(login_req_struct)
-
-        RSAcipher = PKCS1_OAEP.new(pubkey)
-        encrypted_payload = RSAcipher.encrypt(msg_payload)
 
         # DEBUG 
         if self.DEBUG:
@@ -155,8 +150,7 @@ class SiFT_LOGIN:
 
         # trying to send login request
         try:
-            self.mtp.send_msg(self.mtp.type_login_req, encrypted_payload)
-            #self.mtp.send_msg(self.mtp.type_login_req, msg_payload)
+            self.mtp.send_msg(self.mtp.type_login_req, msg_payload)
         except SiFT_MTP_Error as e:
             raise SiFT_LOGIN_Error('Unable to send login request --> ' + e.err_msg)
 

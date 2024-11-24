@@ -115,14 +115,15 @@ class SiFT_MTP:
 
 	# builds and sends message of a given type using the provided payload
 	def send_msg(self, msg_type, msg_payload):
-    	temporary_key = get_random_bytes(32)
-        
-        cipher_key = PKCS1_OAEP.new(pubkey)
-        cipher_payload = AES.new(temporary_key, AES.MODE_GCM, mac_len=12)  	
+		if msg_type == self.type_login_req:
+			temporary_key = get_random_bytes(32)
+			cipher_key = PKCS1_OAEP.new(pubkey)
+			cipher_payload = AES.new(temporary_key, AES.MODE_GCM, mac_len=12)
+  
 		# build message
 		msg_size = self.size_msg_hdr + len(msg_payload)
 		msg_hdr_len = msg_size.to_bytes(self.size_msg_hdr_len, byteorder='big')
-		msg_hdr = self.msg_hdr_ver + msg_type + msg_hdr_len
+		msg_hdr = self.msg_hdr_ver + msg_type + msg_hdr_len + msg_seq + msg_rand + msg_rsv
 
 		# DEBUG 
 		if self.DEBUG:
