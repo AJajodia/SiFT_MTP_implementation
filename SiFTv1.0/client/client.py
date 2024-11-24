@@ -7,6 +7,7 @@ from siftprotocols.siftlogin import SiFT_LOGIN, SiFT_LOGIN_Error
 from siftprotocols.siftcmd import SiFT_CMD, SiFT_CMD_Error
 from siftprotocols.siftupl import SiFT_UPL, SiFT_UPL_Error
 from siftprotocols.siftdnl import SiFT_DNL, SiFT_DNL_Error
+from Crypto.PublicKey import RSA
 
 # ----------- CONFIG -------------
 server_ip = '127.0.0.1' # localhost
@@ -188,9 +189,8 @@ class SiFTShell(cmd.Cmd):
 
 # --------------------------------------
 if __name__ == '__main__':
-    with open('publickey.pem') as f:
-        pubkey = f.read()
-
+    with open('publickey.pem', 'r') as f:
+        publickey = RSA.import_key(f.read())
     try:
         sckt = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         sckt.connect((server_ip, server_port))
@@ -201,7 +201,7 @@ if __name__ == '__main__':
         print('Connection to server established on ' + server_ip + ':' + str(server_port))
 
     mtp = SiFT_MTP(sckt)
-    loginp = SiFT_LOGIN(mtp)
+    loginp = SiFT_LOGIN(mtp, publickey)
 
     print()
     username = input('   Username: ')
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     print()
 
     try:
-        loginp.handle_login_client(username, password, pubkey)
+        loginp.handle_login_client(username, password)
     except SiFT_LOGIN_Error as e:
         print('SiFT_LOGIN_Error: ' + e.err_msg)
         sys.exit(1)
