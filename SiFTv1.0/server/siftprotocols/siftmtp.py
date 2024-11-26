@@ -43,6 +43,11 @@ class SiFT_MTP:
 		# --------- STATE ------------
 		self.peer_socket = peer_socket
 		self.sqn = 0
+	
+		# sets a session key
+	def set_session_key(self, session_key):
+		self.session_key = session_key
+
 
 
 	# parses a message header and returns a dictionary containing the header fields
@@ -76,7 +81,9 @@ class SiFT_MTP:
 
 
 	# receives and parses message, returns msg_type and msg_payload
-	def receive_msg(self, key):
+	def receive_msg(self, key=None):
+		if not key:
+			key = self.session_key
 
 		try:
 			msg_hdr = self.receive_bytes(self.size_msg_hdr)
@@ -98,7 +105,7 @@ class SiFT_MTP:
 		msg_len = int.from_bytes(parsed_msg_hdr['len'], byteorder='big')
 
 		try:
-			msg_body = self.receive_bytes(msg_len - self.size_msg_hdr)
+			enc_msg_body = self.receive_bytes(msg_len - self.size_msg_hdr)
 		except SiFT_MTP_Error as e:
 			raise SiFT_MTP_Error('Unable to receive message body --> ' + e.err_msg)
 
@@ -106,35 +113,40 @@ class SiFT_MTP:
 		if self.DEBUG:
 			print('MTP message received (' + str(msg_len) + '):')
 			print('HDR (' + str(len(msg_hdr)) + '): ' + msg_hdr.hex())
-			print('BDY (' + str(len(msg_body)) + '): ')
-			print(msg_body.hex())
+			print('BDY (' + str(len(enc_msg_body)) + '): ')
+			print(enc_msg_body.hex())
 			print('------------------------------------------')
 		# DEBUG 
 
-		if len(msg_body) != msg_len - self.size_msg_hdr: 
+		if len(enc_msg_body) != msg_len - self.size_msg_hdr: 
 			raise SiFT_MTP_Error('Incomplete message body received')
 
+		# receive the MAC
+		try:
+			mac = self.receive_bytes(self.size_mac)
+		except SiFT_MTP_Error as e:
+			raise SiFT_MTP_Error('MAC was incorrectly received -->' + e.err_msg)
+
 		if parsed_msg_hdr['typ'] == self.type_login_req:
-			enc_temp_key = msg_body[-256:]
-			enc_payload, mac = msg_body[self.size_msg_hdr:-256+self.size_mac],  msg_body[-256+self.size_mac, -256]
-   
+			# receive the temporary key (tk)
+			try:
+				enc_temp_key = self.receive_bytes(256)
+			except SiFT_MTP_Error as e:
+				raise SiFT_MTP_Error('MAC was incorrectly received -->' + e.err_msg)
 			cipher_key = PKCS1_OAEP.new(key)
 			temporary_key = cipher_key.decrypt(enc_temp_key)
+
 			
 			cipher_payload = AES.new(temporary_key, AES.MODE_GCM, mac_len=12, nonce=parsed_msg_hdr['sqn']+parsed_msg_hdr['rand'])
 			cipher_payload.update(msg_hdr)
-			decrypted_payload = cipher_payload.decrypt_and_verify(enc_payload, mac)
+			decrypted_payload = cipher_payload.decrypt_and_verify(enc_msg_body, mac)
 			
-			self.rand = parsed_msg_hdr['rand']
 			self.tk = temporary_key
 
 		elif parsed_msg_hdr['typ'] == self.type_login_res:
-			enc_payload, mac = msg_body[self.size_msg_hdr:-12], msg_body[-12:]
-			temporary_key = cipher_key.decrypt(enc_temp_key)
-   
 			cipher_payload = AES.new(self.tk, AES.MODE_GCM, mac_len=12, nonce=parsed_msg_hdr['sqn']+parsed_msg_hdr['rand'])
 			cipher_payload.update(msg_hdr)
-			decrypted_payload = cipher_payload.decrypt_and_verify(enc_payload, mac)
+			decrypted_payload = cipher_payload.decrypt_and_verify(enc_msg_body, mac)
 
 
 		else:
@@ -152,20 +164,24 @@ class SiFT_MTP:
 
 
 	# builds and sends message of a given type using the provided payload
-	def send_msg(self, msg_type, msg_payload, key):
+	def send_msg(self, msg_type, msg_payload, key=None):
+		if not key:
+			key = self.session_key
+   
 		self.sqn += 1
 
 		msg_size = self.size_msg_hdr + len(msg_payload)
 		msg_hdr_len = msg_size.to_bytes(self.size_msg_hdr_len, byteorder='big')
 		msg_rsv = (0).to_bytes(self.size_msg_hdr_rsv, byteorder='big')
-		
+		msg_rand = get_random_bytes(6)
   
 		if msg_type == self.type_login_req:
 			msg_sqn = self.sqn.to_bytes(self.size_msg_hdr_sqn, byteorder='big')
-			msg_rand = get_random_bytes(6)
 			msg_hdr = self.msg_hdr_ver + msg_type + msg_hdr_len + msg_sqn + msg_rand + msg_rsv
    
 			temporary_key = get_random_bytes(32)
+			self.tk = temporary_key
+   
 			cipher_key = PKCS1_OAEP.new(key)
 			cipher_payload = AES.new(temporary_key, AES.MODE_GCM, mac_len=12, nonce=msg_sqn + msg_rand)
 			cipher_payload.update(msg_hdr)
@@ -175,10 +191,10 @@ class SiFT_MTP:
 			enc_msg = msg_hdr + enc_payload + mac + enc_temp_key
 		elif msg_type == self.type_login_res:
 			msg_sqn = self.sqn.to_bytes(self.size_msg_hdr_sqn, byteorder='big')
-			msg_rand = self.rand.to_bytes(self.size_msg_hdr_rand, byteorder='big')
+			msg_rand = get_random_bytes(6)
 			msg_hdr = self.msg_hdr_ver + msg_type + msg_hdr_len + msg_sqn + msg_rand + msg_rsv
 
-			cipher_payload = AES.new(temporary_key, AES.MODE_GCM, mac_len=12, nonce=msg_sqn + msg_rand)
+			cipher_payload = AES.new(self.tk, AES.MODE_GCM, mac_len=12, nonce=msg_sqn + msg_rand)
 			cipher_payload.update(msg_hdr)
 
 			enc_payload, mac = cipher_payload.encrypt_and_digest(msg_payload)
@@ -208,8 +224,6 @@ class SiFT_MTP:
 		except SiFT_MTP_Error as e:
 			raise SiFT_MTP_Error('Unable to send message to peer --> ' + e.err_msg)
 
-	# sets a session key
-	def set_session_key(self, session_key):
-		self.session_key = session_key
+
 
 

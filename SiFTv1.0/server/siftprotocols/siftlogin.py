@@ -21,7 +21,7 @@ class SiFT_LOGIN:
         # --------- CONSTANTS ------------
         self.delimiter = '\n'
         self.coding = 'utf-8'
-        self.timestamp_delta = 2
+        self.timestamp_delta = 2_000_000_000
         # --------- STATE ------------
         self.mtp = mtp
         self.server_users = None 
@@ -34,10 +34,10 @@ class SiFT_LOGIN:
 
     # builds a login request from a dictionary
     def build_login_req(self, login_req_struct):
-        login_req_str = time.time_ns()
+        login_req_str = str(time.time_ns())
         login_req_str += self.delimiter + login_req_struct['username']
         login_req_str += self.delimiter + login_req_struct['password']
-        login_req_str += self.delimiter + login_req_struct['client_random']
+        login_req_str += self.delimiter + login_req_struct['client_random'].hex()
         return login_req_str.encode(self.coding)
 
 
@@ -49,7 +49,7 @@ class SiFT_LOGIN:
         login_req_struct['timestamp'] = login_req_fields[0]
         login_req_struct['username'] = login_req_fields[1]
         login_req_struct['password'] = login_req_fields[2]
-        login_req_struct['client_random'] = login_req_fields[3]
+        login_req_struct['client_random'] = bytes.fromhex(login_req_fields[3])
         return login_req_struct
 
 
@@ -112,6 +112,7 @@ class SiFT_LOGIN:
         client_time = int(login_req_struct['timestamp'])
         server_time = time.time_ns()
         
+        
         if client_time < server_time - self.timestamp_delta/2 or client_time > server_time + self.timestamp_delta/2:
             raise SiFT_LOGIN_Error('Incorrect timestamp')
         
@@ -138,7 +139,7 @@ class SiFT_LOGIN:
 
         # sending login response
         try:
-            self.mtp.send_msg(self.mtp.type_login_res, msg_payload)
+            self.mtp.send_msg(self.mtp.type_login_res, msg_payload, self.key)
         except SiFT_MTP_Error as e:
             raise SiFT_LOGIN_Error('Unable to send login response --> ' + e.err_msg)
 
@@ -190,7 +191,7 @@ class SiFT_LOGIN:
 
         # trying to receive a login response
         try:
-            msg_type, msg_payload = self.mtp.receive_msg()
+            msg_type, msg_payload = self.mtp.receive_msg(self.key)
         except SiFT_MTP_Error as e:
             raise SiFT_LOGIN_Error('Unable to receive login response --> ' + e.err_msg)
         # DEBUG 
