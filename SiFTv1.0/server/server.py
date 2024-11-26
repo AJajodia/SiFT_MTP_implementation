@@ -50,7 +50,8 @@ class Server:
 
     def handle_client(self, client_socket, addr):
         with open('keypair.pem', 'r') as f:
-            privatekey = RSA.import_key(f.read())
+            keypairstr = f.read()
+        privatekey = RSA.import_key(keypairstr, passphrase='your_key')
             
         
         print('New client on ' + addr[0] + ':' + str(addr[1]))

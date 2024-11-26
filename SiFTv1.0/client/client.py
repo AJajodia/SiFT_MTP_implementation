@@ -201,7 +201,7 @@ if __name__ == '__main__':
         print('Connection to server established on ' + server_ip + ':' + str(server_port))
 
     mtp = SiFT_MTP(sckt)
-    loginp = SiFT_LOGIN(mtp, publickey)
+    loginp = SiFT_LOGIN(mtp, publickey) #error on this line, __init__() takes 2 positional arguments but 3 were given
 
     print()
     username = input('   Username: ')
