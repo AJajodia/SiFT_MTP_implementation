@@ -155,6 +155,7 @@ class SiFT_LOGIN:
         
         session_key = HKDF(client_random+server_random, 32, salt, SHA256)
         
+        print(session_key)
         # set session key
         
         self.mtp.set_session_key(session_key)
@@ -218,6 +219,7 @@ class SiFT_LOGIN:
         
         session_key = HKDF(client_random+server_random, 32, salt, SHA256)
         
+        print(session_key)
         # set session key
         
         self.mtp.set_session_key(session_key)

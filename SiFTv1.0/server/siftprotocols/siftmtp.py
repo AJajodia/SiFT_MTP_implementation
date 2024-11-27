@@ -1,5 +1,6 @@
 #python3
 
+from ast import parse
 import socket
 from Crypto.Random import get_random_bytes
 from Crypto.Cipher import PKCS1_OAEP, AES
@@ -15,9 +16,9 @@ class SiFT_MTP:
 
 		self.DEBUG = True
 		# --------- CONSTANTS ------------
-		self.version_major = 0
-		self.version_minor = 5
-		self.msg_hdr_ver = b'\x00\x05'
+		self.version_major = 1
+		self.version_minor = 0
+		self.msg_hdr_ver = b'\x01\x00'
 		self.size_msg_hdr = 16
 		self.size_msg_hdr_ver = 2
 		self.size_msg_hdr_typ = 2
@@ -101,11 +102,18 @@ class SiFT_MTP:
 		if parsed_msg_hdr['typ'] not in self.msg_types:
 			raise SiFT_MTP_Error('Unknown message type found in message header')
 
-
+		if int.from_bytes(parsed_msg_hdr['sqn'], byteorder='big') < self.sqn:
+			raise SiFT_MTP_Error('Sequence number is incorrect')
+		else:
+			self.sqn = int.from_bytes(parsed_msg_hdr['sqn'], byteorder='big')
 		msg_len = int.from_bytes(parsed_msg_hdr['len'], byteorder='big')
 
 		try:
-			enc_msg_body = self.receive_bytes(msg_len - self.size_msg_hdr)
+			if parsed_msg_hdr['typ'] == self.type_login_req:
+				response_buffer = 256
+			else:
+				response_buffer = 0
+			enc_msg_body = self.receive_bytes(msg_len - self.size_msg_hdr - self.size_mac - response_buffer)
 		except SiFT_MTP_Error as e:
 			raise SiFT_MTP_Error('Unable to receive message body --> ' + e.err_msg)
 
@@ -118,7 +126,7 @@ class SiFT_MTP:
 			print('------------------------------------------')
 		# DEBUG 
 
-		if len(enc_msg_body) != msg_len - self.size_msg_hdr: 
+		if len(enc_msg_body) != msg_len - self.size_msg_hdr - self.size_mac - response_buffer: 
 			raise SiFT_MTP_Error('Incomplete message body received')
 
 		# receive the MAC
@@ -147,10 +155,13 @@ class SiFT_MTP:
 			cipher_payload = AES.new(self.tk, AES.MODE_GCM, mac_len=12, nonce=parsed_msg_hdr['sqn']+parsed_msg_hdr['rand'])
 			cipher_payload.update(msg_hdr)
 			decrypted_payload = cipher_payload.decrypt_and_verify(enc_msg_body, mac)
+			print('Login response received')
 
 
 		else:
-			decrypted_payload = b''
+			cipher_payload = AES.new(self.session_key, AES.MODE_GCM, mac_len=12, nonce=parsed_msg_hdr['sqn']+parsed_msg_hdr['rand'])
+			cipher_payload.update(msg_hdr)
+			decrypted_payload = cipher_payload.decrypt_and_verify(enc_msg_body, mac)
    
 		return parsed_msg_hdr['typ'], decrypted_payload
 
@@ -169,8 +180,12 @@ class SiFT_MTP:
 			key = self.session_key
    
 		self.sqn += 1
-
-		msg_size = self.size_msg_hdr + len(msg_payload)
+  
+		msg_size = self.size_msg_hdr + len(msg_payload) + 12
+		if msg_type == self.type_login_req:
+			msg_size += 256
+			
+		
 		msg_hdr_len = msg_size.to_bytes(self.size_msg_hdr_len, byteorder='big')
 		msg_rsv = (0).to_bytes(self.size_msg_hdr_rsv, byteorder='big')
 		msg_rand = get_random_bytes(6)
@@ -189,9 +204,9 @@ class SiFT_MTP:
 			enc_payload, mac = cipher_payload.encrypt_and_digest(msg_payload)
 			enc_temp_key = cipher_key.encrypt(temporary_key)
 			enc_msg = msg_hdr + enc_payload + mac + enc_temp_key
+			print('ETK: ',  enc_temp_key)
 		elif msg_type == self.type_login_res:
 			msg_sqn = self.sqn.to_bytes(self.size_msg_hdr_sqn, byteorder='big')
-			msg_rand = get_random_bytes(6)
 			msg_hdr = self.msg_hdr_ver + msg_type + msg_hdr_len + msg_sqn + msg_rand + msg_rsv
 
 			cipher_payload = AES.new(self.tk, AES.MODE_GCM, mac_len=12, nonce=msg_sqn + msg_rand)
@@ -203,8 +218,14 @@ class SiFT_MTP:
 
    
 		else:
-			enc_message = ''
+			msg_sqn = self.sqn.to_bytes(self.size_msg_hdr_sqn, byteorder='big')
+			msg_hdr = self.msg_hdr_ver + msg_type + msg_hdr_len + msg_sqn + msg_rand + msg_rsv
+   
+			cipher_payload = AES.new(self.session_key, AES.MODE_GCM, mac_len=12, nonce=msg_sqn+msg_rand)
+			cipher_payload.update(msg_hdr)
+			enc_payload, mac = cipher_payload.encrypt_and_digest(msg_payload)
 
+			enc_msg = msg_hdr + enc_payload + mac
   
 		# build message
 		
@@ -213,8 +234,11 @@ class SiFT_MTP:
 		if self.DEBUG:
 			print('MTP message to send (' + str(msg_size) + '):')
 			print('HDR (' + str(len(msg_hdr)) + '): ' + msg_hdr.hex())
-			print('BDY (' + str(len(msg_payload)) + '): ')
-			print(msg_payload.hex())
+			print('BDY (' + str(len(enc_payload)) + '): ')
+			print(enc_payload.hex())
+			print('MAC (' + str(len(mac)) + '): ')
+			print(mac.hex())
+			print('FULL MSG LEN ('+ str(len(enc_msg)) + '): ')
 			print('------------------------------------------')
 		# DEBUG 
 

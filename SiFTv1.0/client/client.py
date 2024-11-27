@@ -11,7 +11,7 @@ from Crypto.PublicKey import RSA
 
 # ----------- CONFIG -------------
 server_ip = '127.0.0.1' # localhost
-# server_ip = '192.168.x.y'
+# server_ip = '192.168.20.11'
 server_port = 5150
 # --------------------------------
 
@@ -189,7 +189,7 @@ class SiFTShell(cmd.Cmd):
 
 # --------------------------------------
 if __name__ == '__main__':
-    with open('publickey.pem', 'r') as f:
+    with open('publickey.pem', 'rb') as f:
         publickey = RSA.import_key(f.read())
     try:
         sckt = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
@@ -201,7 +201,7 @@ if __name__ == '__main__':
         print('Connection to server established on ' + server_ip + ':' + str(server_port))
 
     mtp = SiFT_MTP(sckt)
-    loginp = SiFT_LOGIN(mtp, publickey) #error on this line, __init__() takes 2 positional arguments but 3 were given
+    loginp = SiFT_LOGIN(mtp, publickey)
 
     print()
     username = input('   Username: ')
